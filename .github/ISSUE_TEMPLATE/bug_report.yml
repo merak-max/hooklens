@@ -1,0 +1,53 @@
+name: Bug report
+description: Report reproducible incorrect behavior in HookLens.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include webhook secrets, captured private payloads, access tokens, or vulnerability details.
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest safe sequence that reproduces the problem.
+      placeholder: |
+        1. Create an inbox
+        2. Send a POST request with...
+        3. Observe...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: HookLens version or commit
+      placeholder: v0.1.0 or commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How are you running HookLens?
+      options:
+        - Local development
+        - Docker Compose
+        - Custom container deployment
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed secrets and private payload data from this report.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

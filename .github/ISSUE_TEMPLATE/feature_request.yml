@@ -1,0 +1,24 @@
+name: Feature request
+description: Propose a focused improvement to HookLens.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Explain the webhook-development problem without prescribing an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe the behavior that would make the problem meaningfully better.
+    validations:
+      required: true
+  - type: textarea
+    id: tradeoffs
+    attributes:
+      label: Security or operational considerations
+      description: Note effects on untrusted input, stored data, authentication, network egress, or deployment complexity.

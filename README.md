@@ -1,5 +1,9 @@
 # HookLens
 
+[![CI](https://github.com/merak-max/hooklens/actions/workflows/ci.yml/badge.svg)](https://github.com/merak-max/hooklens/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/merak-max/hooklens)](https://github.com/merak-max/hooklens/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-8ff0bd.svg)](LICENSE)
+
 HookLens is a self-hosted webhook inspection workspace. It creates isolated capture endpoints, streams deliveries into a browser in real time, exposes the original headers and payload, verifies HMAC-SHA256 signatures, supports server-side search and filters, persists events, and can replay a delivery to an explicitly allowlisted host.
 
 > HookLens is an independent portfolio project. It is not presented as a production-ready multi-tenant webhook service.
@@ -83,6 +87,10 @@ REPLAY_ALLOWED_HOSTS=hooks.example.com,events.example.com docker compose up --bu
 - Replay supports only HTTP(S), blocks loopback/private IP literals, does not follow redirects, and requires an exact hostname allowlist match.
 - The repository contains no default credentials or hosted service keys.
 - This MVP has no user authentication. Do not expose it as a public shared service without the controls listed in [SECURITY.md](SECURITY.md).
+
+## Contributing
+
+Bug reports and focused improvements are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, required checks, and security-reporting boundary.
 
 ## License
 
