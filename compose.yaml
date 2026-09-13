@@ -1,0 +1,12 @@
+services:
+  hooklens:
+    build: .
+    ports:
+      - "8787:8787"
+    environment:
+      REPLAY_ALLOWED_HOSTS: ${REPLAY_ALLOWED_HOSTS:-example.com}
+    volumes:
+      - hooklens-data:/app/data
+
+volumes:
+  hooklens-data:
