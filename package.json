@@ -1,0 +1,17 @@
+{
+  "name": "hooklens",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@12.4.1",
+  "scripts": {
+    "dev": "concurrently -k -n api,web \"pnpm --filter @hooklens/api dev\" \"pnpm --filter @hooklens/web dev\"",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm --filter @hooklens/api test",
+    "test:e2e": "pnpm --filter @hooklens/web test:e2e",
+    "check": "pnpm audit --audit-level high && pnpm lint && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
