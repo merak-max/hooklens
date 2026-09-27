@@ -1,9 +1,10 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import express, { type Response } from "express";
+import express, { type Response, type ErrorRequestHandler } from "express";
 import { resolve } from "node:path";
 import { existsSync } from "node:fs";
-import { FileStore } from "./store.js";
-import { validateReplayUrl } from "./replay.js";
+import { FileStore, StoreLimitError } from "./store.js";
+import { deliverReplay, validateReplayUrl } from "./replay.js";
+import { rateLimit, requestToken, tokenMatches } from "./security.js";
 import { verifySignature } from "./signature.js";
 import type { WebhookEvent } from "./types.js";
 
@@ -11,7 +12,10 @@ type AppOptions = {
   store: FileStore;
   publicBaseUrl?: string;
   allowedReplayHosts?: Set<string>;
-  fetchImpl?: typeof fetch;
+  replayImpl?: typeof deliverReplay;
+  authToken?: string;
+  secureCookies?: boolean;
+  requestsPerMinute?: number;
   webDist?: string;
 };
 
@@ -31,13 +35,28 @@ export function createApp(options: AppOptions) {
   const app = express();
   const streams = new Map<string, Set<Response>>();
   const allowedReplayHosts = options.allowedReplayHosts ?? new Set<string>();
-  const fetchImpl = options.fetchImpl ?? fetch;
+  const replayImpl = options.replayImpl ?? deliverReplay;
+  if (options.authToken && options.authToken.length < 24) throw new Error("HOOKLENS_TOKEN must contain at least 24 characters.");
 
   app.disable("x-powered-by");
+  app.use((request, response, next) => {
+    if (!options.authToken) {
+      let hostname: string;
+      try { hostname = new URL(`http://${request.get("host")}`).hostname; }
+      catch { return void response.status(400).json({ error: "Invalid Host header." }); }
+      if (!["localhost", "127.0.0.1", "[::1]"].includes(hostname)) return void response.status(421).json({ error: "Unauthenticated mode accepts only loopback Host headers." });
+    }
+    next();
+  });
+  app.use((_request, response, next) => {
+    response.set({ "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY" });
+    next();
+  });
 
   app.get("/api/health", (_request, response) => response.json({ status: "ok" }));
 
-  app.all("/hook/:key", express.raw({ type: "*/*", limit: "1mb" }), async (request, response) => {
+  app.use(rateLimit(options.requestsPerMinute ?? 600));
+  app.all("/hook/:key", express.raw({ type: () => true, limit: "64kb" }), async (request, response) => {
     const inbox = await options.store.findInboxByKey(request.params.key);
     if (!inbox) return response.status(404).json({ error: "Inbox not found." });
     const raw = Buffer.isBuffer(request.body) ? request.body : Buffer.from("");
@@ -55,12 +74,34 @@ export function createApp(options: AppOptions) {
       receivedAt: new Date().toISOString(),
       signature: verifySignature(inbox.secret, raw, request.get("x-hooklens-signature") ?? undefined),
     };
-    await options.store.addEvent(event);
-    for (const stream of streams.get(inbox.id) ?? []) stream.write(`event: webhook\ndata: ${JSON.stringify(event)}\n\n`);
+    const stored = await options.store.addEvent(event);
+    for (const stream of streams.get(inbox.id) ?? []) {
+      if (!stream.write(`event: webhook\ndata: ${JSON.stringify(stored)}\n\n`)) stream.end();
+    }
     return response.status(202).json({ accepted: true, eventId: event.id });
   });
 
   app.use(express.json({ limit: "64kb" }));
+  app.use("/api", (request, response, next) => {
+    response.set("Cache-Control", "no-store");
+    const origin = request.get("origin");
+    const expectedOrigin = options.publicBaseUrl ? new URL(options.publicBaseUrl).origin : `${request.protocol}://${request.get("host")}`;
+    if (request.get("sec-fetch-site") === "cross-site" || (origin && origin !== expectedOrigin)) return void response.status(403).json({ error: "Cross-origin management requests are blocked." });
+    next();
+  });
+  app.post("/api/session", rateLimit(10), (request, response) => {
+    if (!options.authToken || !tokenMatches(String(request.body?.token ?? ""), options.authToken)) return response.status(401).json({ error: "Invalid management token." });
+    response.cookie("hooklens_session", options.authToken, { httpOnly: true, sameSite: "strict", secure: options.secureCookies ?? false, maxAge: 8 * 3600000, path: "/api" });
+    return response.json({ authenticated: true });
+  });
+  app.use("/api", (request, response, next) => {
+    if (options.authToken && !tokenMatches(requestToken(request), options.authToken)) return void response.status(401).json({ error: "Management authentication required." });
+    next();
+  });
+  app.delete("/api/session", (_request, response) => {
+    response.clearCookie("hooklens_session", { path: "/api" });
+    response.json({ authenticated: false });
+  });
 
   app.get("/api/inboxes", async (_request, response) => response.json(await options.store.listInboxes()));
 
@@ -94,14 +135,16 @@ export function createApp(options: AppOptions) {
 
   app.get("/api/inboxes/:id/stream", async (request, response) => {
     if (!await options.store.findInboxById(request.params.id)) return response.status(404).end();
-    response.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
-    response.flushHeaders();
     const clients = streams.get(request.params.id) ?? new Set<Response>();
+    if (clients.size >= 10 || [...streams.values()].reduce((sum, set) => sum + set.size, 0) >= 100) return response.status(429).end();
+    response.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" });
+    response.flushHeaders();
     clients.add(response);
     streams.set(request.params.id, clients);
     response.write("event: ready\ndata: {}\n\n");
-    const heartbeat = setInterval(() => response.write(": heartbeat\n\n"), 20_000);
-    request.on("close", () => { clearInterval(heartbeat); clients.delete(response); });
+    const heartbeat = setInterval(() => { if (!response.write(": heartbeat\n\n")) response.end(); }, 20_000);
+    const lifetime = setTimeout(() => response.end(), 5 * 60_000);
+    response.on("close", () => { clearInterval(heartbeat); clearTimeout(lifetime); clients.delete(response); if (!clients.size) streams.delete(request.params.id); });
   });
 
   app.post("/api/events/:id/replay", async (request, response) => {
@@ -110,13 +153,10 @@ export function createApp(options: AppOptions) {
     let destination: URL;
     try { destination = validateReplayUrl(request.body?.destination, allowedReplayHosts); }
     catch (error) { return response.status(403).json({ error: (error as Error).message }); }
-    const replayResponse = await fetchImpl(destination, {
-      method: event.method,
-      headers: { "content-type": event.contentType, "x-hooklens-replay": event.id },
-      body: ["GET", "HEAD"].includes(event.method) ? undefined : Buffer.from(event.rawBody, "base64"),
-      redirect: "manual",
-    });
-    return response.json({ status: replayResponse.status, destination: destination.toString() });
+    try {
+      const status = await replayImpl(destination, event);
+      return response.json({ status, destination: destination.toString() });
+    } catch { return response.status(502).json({ error: "Replay failed DNS validation, timed out, or could not connect." }); }
   });
 
   if (options.webDist && existsSync(options.webDist)) {
@@ -124,5 +164,12 @@ export function createApp(options: AppOptions) {
     app.get("/{*path}", (_request, response) => response.sendFile(resolve(options.webDist!, "index.html")));
   }
 
+  const handleError: ErrorRequestHandler = (error, _request, response, _next) => {
+    if (response.headersSent) return response.end();
+    if (error instanceof StoreLimitError) return void response.status(507).json({ error: error.message });
+    const status = error?.status === 413 ? 413 : error?.status === 400 ? 400 : 500;
+    response.status(status).json({ error: status === 413 ? "Payload exceeds 64 KiB." : status === 400 ? "Malformed request." : "Internal server error." });
+  };
+  app.use(handleError);
   return app;
 }

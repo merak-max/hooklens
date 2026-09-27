@@ -1,6 +1,6 @@
 {
   "name": "hooklens",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "packageManager": "pnpm@12.4.1",
   "scripts": {
@@ -9,6 +9,9 @@
     "lint": "pnpm -r lint",
     "test": "pnpm --filter @hooklens/api test",
     "test:e2e": "pnpm --filter @hooklens/web test:e2e",
+    "test:demo": "pnpm --filter @hooklens/web exec playwright test -c playwright.demo.config.ts",
+    "benchmark": "node scripts/benchmark.mjs",
+    "record:demo": "node apps/web/scripts/record-demo.mjs",
     "check": "pnpm audit --audit-level high && pnpm lint && pnpm test && pnpm build"
   },
   "devDependencies": {

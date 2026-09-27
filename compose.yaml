@@ -2,9 +2,13 @@ services:
   hooklens:
     build: .
     ports:
-      - "8787:8787"
+      - "127.0.0.1:8787:8787"
     environment:
-      REPLAY_ALLOWED_HOSTS: ${REPLAY_ALLOWED_HOSTS:-example.com}
+      HOST: 0.0.0.0
+      HOOKLENS_TOKEN: ${HOOKLENS_TOKEN:?Set a random management token of at least 24 characters}
+      REPLAY_ALLOWED_HOSTS: ${REPLAY_ALLOWED_HOSTS:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8787}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
     volumes:
       - hooklens-data:/app/data
 

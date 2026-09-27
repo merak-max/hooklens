@@ -1,0 +1,23 @@
+import { expect, test } from "@playwright/test";
+test("sandbox is labeled, simulates drift, blocks replay, and resets on reload without API requests", async ({ page }) => {
+  const apiRequests: string[] = [];
+  page.on("request", (request) => { if (request.url().includes("/api/") || request.url().includes("/hook/")) apiRequests.push(request.url()); });
+  await page.goto("./");
+  await expect(page.getByText("Interactive sandbox · simulated events")).toBeVisible();
+  await page.getByLabel("New inbox").fill("Sample orders");
+  await page.getByRole("button", { name: "Create endpoint" }).click();
+  await page.getByRole("button", { name: "Generate sample webhook" }).click();
+  await expect(page.getByRole("button", { name: /order.created/ })).toBeVisible();
+  await page.waitForTimeout(550);
+  await page.getByRole("button", { name: "Generate sample webhook" }).click();
+  await page.getByRole("button", { name: /currency/ }).click();
+  await expect(page.getByText("2 structural changes")).toBeVisible();
+  await page.getByLabel("Replay destination").fill("https://example.com");
+  await page.getByRole("button", { name: "Replay", exact: true }).click();
+  await expect(page.getByText(/sandbox never sends outbound/)).toBeVisible();
+  expect(apiRequests).toEqual([]);
+  await page.reload();
+  await expect(page.getByText("Create your first webhook inbox.")).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.locator("body").evaluate((body) => body.scrollWidth <= body.clientWidth)).toBe(true);
+});
