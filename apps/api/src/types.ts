@@ -9,6 +9,7 @@ export type Inbox = {
   key: string;
   secret: string;
   createdAt: string;
+  baseline?: { eventId: string; shape: import("./schema.js").Shape };
 };
 
 export type WebhookEvent = {
@@ -23,6 +24,8 @@ export type WebhookEvent = {
   contentType: string;
   receivedAt: string;
   signature: SignatureResult;
+  schema?: { baselineEventId: string; changes: import("./schema.js").SchemaChange[] };
+  schemaError?: string;
 };
 
 export type Database = {

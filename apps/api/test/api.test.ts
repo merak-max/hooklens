@@ -13,8 +13,8 @@ let directory: string;
 beforeEach(async () => { directory = await mkdtemp(join(tmpdir(), "hooklens-")); });
 afterEach(async () => { await rm(directory, { recursive: true, force: true }); });
 
-function setup(options: { allowedHosts?: Set<string>; fetchImpl?: typeof fetch } = {}) {
-  return createApp({ store: new FileStore(join(directory, "store.json")), allowedReplayHosts: options.allowedHosts, fetchImpl: options.fetchImpl, publicBaseUrl: "https://hooks.test" });
+function setup(options: { allowedHosts?: Set<string>; replayImpl?: typeof import("../src/replay.js").deliverReplay } = {}) {
+  return createApp({ store: new FileStore(join(directory, "store.json")), allowedReplayHosts: options.allowedHosts, replayImpl: options.replayImpl, publicBaseUrl: "https://hooks.test" });
 }
 
 test("creates an inbox and captures a signed JSON webhook", async () => {
@@ -56,11 +56,11 @@ test("persists inboxes and events across store instances", async () => {
 
 test("blocks unapproved replay hosts and forwards to an allowlisted host", async () => {
   let replayedBody = "";
-  const fetchImpl = (async (_input: URL | RequestInfo, init?: RequestInit) => {
-    replayedBody = String(init?.body);
-    return new Response(null, { status: 204 });
-  }) as typeof fetch;
-  const app = setup({ allowedHosts: new Set(["example.com"]), fetchImpl });
+  const replayImpl = async (_url: URL, event: import("../src/types.js").WebhookEvent) => {
+    replayedBody = Buffer.from(event.rawBody, "base64").toString();
+    return 204;
+  };
+  const app = setup({ allowedHosts: new Set(["example.com"]), replayImpl });
   const inbox = (await request(app).post("/api/inboxes").send({ name: "Replay" })).body;
   const event = (await request(app).post(`/hook/${inbox.key}`).send("deliver me")).body;
   await request(app).post(`/api/events/${event.eventId}/replay`).send({ destination: "http://127.0.0.1/receive" }).expect(403);

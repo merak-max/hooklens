@@ -1,5 +1,15 @@
 import { expect, test } from "@playwright/test";
 
+test.beforeEach(async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Management token").fill("browser-test-token-local-only");
+  const loginResponse = page.waitForResponse((response) => response.url().endsWith("/api/session"));
+  await page.getByRole("button", { name: "Sign in" }).click();
+  const response = await loginResponse;
+  expect(response.ok()).toBe(true);
+  await expect(page.getByLabel("New inbox")).toBeVisible();
+});
+
 test("creates an inbox, receives a webhook, and filters the live event", async ({ page, request }) => {
   await page.goto("/");
   await page.getByLabel("New inbox").fill("Browser test inbox");
@@ -11,8 +21,11 @@ test("creates an inbox, receives a webhook, and filters the live event", async (
   await request.post(endpoint!, { data: { event: "payment.succeeded", amount: 4200 } });
 
   await expect(page.getByRole("button", { name: /payment\.succeeded/ })).toBeVisible();
+  await request.post(endpoint!, { data: { event: "payment.succeeded", amount: "4200", currency: "USD" } });
+  await page.getByRole("button", { name: /currency/ }).click();
+  await expect(page.getByText("2 structural changes")).toBeVisible();
   await page.getByLabel("Search events").fill("4200");
-  await expect(page.getByRole("button", { name: /payment\.succeeded/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /payment\.succeeded/ }).first()).toBeVisible();
   await page.getByLabel("Search events").fill("not-present");
   await expect(page.getByText("No matching events")).toBeVisible();
 });
